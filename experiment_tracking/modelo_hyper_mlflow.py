@@ -1,4 +1,3 @@
-# %%
 # Importing necessary libraries
 import numpy as np
 import pandas as pd
@@ -17,23 +16,12 @@ import warnings
 warnings.filterwarnings('ignore')
 warnings.simplefilter('ignore')
 
-# %%
 mlflow.set_tracking_uri('http://localhost:5000')
 mlflow.set_experiment('hyperopt-exp')
 
-# %%
-def cat_to_num_variables(df):
-    for col in df.columns:
-        if df[col].dtype == 'object':
-            encoded_labels = pd.get_dummies(df[col], prefix=col, drop_first=True)
-            df.drop(columns=[col], inplace=True)
-            df = pd.concat([df, encoded_labels], axis=1)
-
-    return df
 
 def data_preprocessing(data):
-    # Convertimos las variables categoricas a numericas con get_dummies
-    data = cat_to_num_variables(data)
+    
     # Convertimos todos los datos nulos a la media de los valores de esa columna
     data = data.fillna(data.mean())
     # Quitamos la columna Id porque no nos aporta
@@ -55,32 +43,25 @@ def map_values(input_list):
     return [mapping[value] for value in input_list if value in mapping]
 
 
-# %%
 df = pd.read_csv("breast-cancer.csv")
 df.sample()
 
-# %%
 print("##### Data Preprocessing #####\n")
 print(f'Numero de datos que tenemos: {len(df)}\n')
 
-# %%
 print("\n##### Dataset Balancing #####\n")
 # Dividir los datos en características (X) y etiquetas (y)
 X = df.drop("diagnosis", axis=1)
 y = df["diagnosis"]
 print(f'Numero de casos de no infarto vs infarto: {Counter(y)}')
 
-# %%
 y = map_values(y)
 
-# %%
 df = data_preprocessing(df)
 df.head(5)
 
-# %%
 print("\n##### Model Training #####\n")
 
-# %%
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
@@ -88,7 +69,6 @@ from sklearn.metrics import accuracy_score
 # Dividir los datos en conjuntos de entrenamiento y prueba
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# %%
 space = {
     "n_estimators": hp.choice("n_estimators", [100, 200, 300, 400,500,600]),
     "max_depth": hp.choice("max_depth", [1, 2, 3, 5, 8]),
@@ -118,5 +98,3 @@ best_result = fmin(
         max_evals=50,
         trials=Trials()
     )
-
-
