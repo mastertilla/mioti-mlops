@@ -47,8 +47,9 @@ print(f'Numero de datos que tenemos: {len(df)}\n')
 
 print("\n##### Dataset Balancing #####\n")
 # Dividir los datos en características (X) y etiquetas (y)
-X = df.drop("diagnosis", axis=1)
+X = df.drop(["id", "diagnosis"], axis=1)
 y = df["diagnosis"]
+
 print(f'Numero de casos de no infarto vs infarto: {Counter(y)}')
 
 y = map_values(y)
