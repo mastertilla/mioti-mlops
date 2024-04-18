@@ -1,3 +1,4 @@
+# %%
 # Importing necessary libraries
 import numpy as np
 import pandas as pd
@@ -16,14 +17,11 @@ import warnings
 warnings.filterwarnings('ignore')
 warnings.simplefilter('ignore')
 
-mlflow.set_tracking_uri('http://dani-test.online:5000')
+# %%
+mlflow.set_tracking_uri('http://localhost:5000')
 mlflow.set_experiment('hyperopt-exp')
 
-df = pd.read_csv('dataset.csv')
-
-print("##### Data Preprocessing #####\n")
-print(f'Numero de datos que tenemos: {len(df)}\n')
-
+# %%
 def cat_to_num_variables(df):
     for col in df.columns:
         if df[col].dtype == 'object':
@@ -43,43 +41,54 @@ def data_preprocessing(data):
 
     return data
 
-df = data_preprocessing(df)
-print(df.head(5).to_markdown())
+def map_values(input_list):
+    """
+    Mapea los valores 'M' a 1 y 'B' a 0 en input_list.
 
+    Args:
+    - input_list (list): La lista de valores que se van a mapear.
+
+    Returns:
+    - list: Una lista de los valores mapeados.
+    """
+    mapping = {'M': 1, 'B': 0}
+    return [mapping[value] for value in input_list if value in mapping]
+
+
+# %%
+df = pd.read_csv("breast-cancer.csv")
+df.sample()
+
+# %%
+print("##### Data Preprocessing #####\n")
+print(f'Numero de datos que tenemos: {len(df)}\n')
+
+# %%
 print("\n##### Dataset Balancing #####\n")
-# Primero hacemos un split de nuestros datos entre variables independientes y variables objetivo
-X = df.drop(columns=['stroke'])
-y = df['stroke']
+# Dividir los datos en características (X) y etiquetas (y)
+X = df.drop("diagnosis", axis=1)
+y = df["diagnosis"]
 print(f'Numero de casos de no infarto vs infarto: {Counter(y)}')
 
-def dataset_oversampling(X, y):
-    # Definimos la estrategia de oversampling
-    over = RandomOverSampler(sampling_strategy=0.2)
-    # Adaptamos a nuestro dataset
-    X_over, y_over = over.fit_resample(X, y)
-    # summarize class distribution
-    print(f'Numero de casos de no infarto vs infarto despues de oversampling: {Counter(y_over)}')
+# %%
+y = map_values(y)
 
-    return X_over, y_over
+# %%
+df = data_preprocessing(df)
+df.head(5)
 
-def dataset_undersampling(X, y):
-    # Definimos la estrategia de oversampling
-    under = RandomUnderSampler(sampling_strategy=0.5)
-    # Adaptamos a nuestro dataset
-    X_over_under, y_over_under = under.fit_resample(X, y)
-    # summarize class distribution
-    print(f'Numero de casos de no infarto vs infarto despues de oversampling y undersampling: {Counter(y_over_under)}')
-
-    return X_over_under, y_over_under
-
-X, y = dataset_oversampling(X, y)
-X, y = dataset_undersampling(X, y)
-
+# %%
 print("\n##### Model Training #####\n")
 
-# Hacemos un split de nuestros datos
-X_train_balanced, X_test_balanced, y_train_balanced, y_test_balanced = train_test_split(X, y, test_size=.1)
+# %%
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
 
+# Dividir los datos en conjuntos de entrenamiento y prueba
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# %%
 space = {
     "n_estimators": hp.choice("n_estimators", [100, 200, 300, 400,500,600]),
     "max_depth": hp.choice("max_depth", [1, 2, 3, 5, 8]),
@@ -92,15 +101,15 @@ def objective(params):
         mlflow.log_params(params)
 
         clf = RandomForestClassifier(**params, n_jobs=-1)
-        clf.fit(X_train_balanced, y_train_balanced)
+        clf.fit(X_train, y_train)
 
-        y_pred = clf.predict(X_test_balanced)
-        accuracy = metrics.accuracy_score(y_test_balanced, y_pred)
+        y_pred = clf.predict(X_test)
+        accuracy = metrics.accuracy_score(y_test, y_pred)
         mlflow.log_metric('accuracy', accuracy)
-        mlflow.log_metric('precision', metrics.precision_score(y_test_balanced, y_pred))
-        mlflow.log_metric('recall', metrics.recall_score(y_test_balanced, y_pred))
+        mlflow.log_metric('precision', metrics.precision_score(y_test, y_pred))
+        mlflow.log_metric('recall', metrics.recall_score(y_test, y_pred))
 
-    return {'loss': 1 - metrics.recall_score(y_test_balanced, y_pred), 'status': STATUS_OK}
+    return {'loss': 1 - metrics.recall_score(y_test, y_pred), 'status': STATUS_OK}
 
 best_result = fmin(
         fn=objective,
@@ -109,3 +118,5 @@ best_result = fmin(
         max_evals=50,
         trials=Trials()
     )
+
+
