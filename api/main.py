@@ -42,12 +42,74 @@ Datos de entrada del modelo:
 
 
 """
-from fastapi import FastAPI, HTTPException, Body
+from fastapi import FastAPI, HTTPException, Body, Depends, status
+from pydantic import BaseModel, Field
 import joblib
 import pandas as pd
-from pydantic import BaseModel, Field
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from passlib.context import CryptContext
+import jwt
+from datetime import datetime, timedelta
 
 app = FastAPI()
+
+# Constantes para la configuración del token JWT y el almacenamiento seguro de contraseñas
+SECRET_KEY = "your-secret-key"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+# Para el almacenamiento seguro de contraseñas
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# Clase para modelar usuarios
+class User(BaseModel):
+    username: str
+    password: str
+
+# Función para autenticar usuarios
+def authenticate_user(username: str, password: str):
+    user = get_user(username)
+    if not user:
+        return False
+    if not verify_password(password, user.password):
+        return False
+    return user
+
+# Función para verificar contraseñas
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
+
+# Función para obtener usuarios (puedes reemplazarla con tu propia lógica de almacenamiento de usuarios)
+def get_user(username: str):
+    if username == "testuser":
+        hashed_password = get_password_hash("testpassword")
+        return User(username="testuser", password=hashed_password)
+    return None
+
+# Función para hashear contraseñas
+def get_password_hash(password):
+    return pwd_context.hash(password)
+
+# Funciones para trabajar con tokens JWT
+def create_access_token(data: dict, expires_delta: timedelta = None):
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+def decode_access_token(token: str):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload
+    except jwt.JWTError:
+        return None
+
+# Instancia de OAuth2PasswordBearer para manejar la autenticación
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 # Definir modelo Pydantic para la validación de datos de entrada
 class InputData(BaseModel):
@@ -83,7 +145,7 @@ class InputData(BaseModel):
     fractal_dimension_worst: float
 
 # Cargar el modelo entrenado
-model = joblib.load('/Users/Mi/Documents/Git/mioti-mlops/experiment_tracking/models/clasificador.pkl')
+model = joblib.load('/Users/Mi/Documents/Git/mlops/experiment_tracking/models/clasificador.pkl')
 
 # Función para realizar la predicción
 def breast_cancer_prediction(message: InputData):
@@ -94,11 +156,27 @@ def breast_cancer_prediction(message: InputData):
 # Ruta principal de la API
 @app.get('/')
 def main():
-    return {'message': 'Bienvenido a la API de breast cancer prediction. Para realizar unaa predicción accede a /breast-cancer-prediction'}
+    return {'message': 'Bienvenido a la API de breast cancer prediction'}
+
+# Ruta para manejar la autenticación de usuarios
+@app.post("/token")
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+    user = authenticate_user(form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.username}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
 
 # Ruta para realizar la predicción
 @app.post('/breast-cancer-prediction/')
-def predict_breast_cancer(data: InputData):
+def predict_breast_cancer(data: InputData, token: str = Depends(oauth2_scheme)):
     try:
         # Realizar la predicción
         model_pred = breast_cancer_prediction(data)
