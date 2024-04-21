@@ -1,132 +1,119 @@
-"""
-Datos de entrada del modelo:
-['age', 'hypertension', 'heart_disease', 'avg_glucose_level', 'bmi',
-       'gender_Male', 'gender_Other', 'ever_married_Yes',
-       'work_type_Never_worked', 'work_type_Private',
-       'work_type_Self-employed', 'work_type_children', 'Residence_type_Urban',
-       'smoking_status_formerly smoked', 'smoking_status_never smoked',
-       'smoking_status_smokes']
-
-{
-    'age': int,
-    'hypertension': int (1/0),
-    'gender': str (male/female/other),
-    'ever_married_Yes': int (1/0),
-    'heart_disease': int (1/0),
-    'avg_glucose_level': int,
-    'bmi': int,
-    'work_type': str (never worked/private/self-employed/children)
-    'residence_type': str (urban)
-    'smoking_status': str (formerly smoked/never smoked/smokes)
-}
-
-{
-    "age": 33,
-    "hypertension": 1,
-    "gender": "male",
-    "ever_married_Yes": 1,
-    "heart_disease": 0,
-    "avg_glucose_level": 70,
-    "bmi": 29,
-    "work_type": "private",
-    "residence_type": "urban",
-    "smoking_status": "never smoked"
-}
-
-{
-    "age": 75,
-    "hypertension": 1,
-    "gender": "male",
-    "ever_married_Yes": 1,
-    "heart_disease": 1,
-    "avg_glucose_level": 120,
-    "bmi": 29,
-    "work_type": "private",
-    "residence_type": "urban",
-    "smoking_status": "never smoked"
-}
-
-"""
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Form
+from fastapi.responses import HTMLResponse
 import joblib
 import pandas as pd
+import base64
+from PIL import Image
+import io
 
+# Cargar el modelo
 model = joblib.load('model.sav')
 
+# Inicializar la aplicación FastAPI
 app = FastAPI()
 
-def gender_encoding(message):
-    gender_encoded = {'gender_Male': 0, 'gender_Other': 0}
-    if message['gender'].lower() == 'male':
-        gender_encoded['gender_Male'] = 1
-    elif message['gender'].lower() == 'other':
-        gender_encoded['gender_Other'] = 1
+# Función para codificar el sexo
+def sex_encoding(sex):
+    return 0 if sex.lower() == 'male' else 1
 
-    del message['gender']
+# Función para preparar los datos
+def data_prep(sex, age, weight, hour, bpm):
+    sex_encoded = sex_encoding(sex)
+    return pd.DataFrame([[sex_encoded, age, weight, hour, bpm]], columns=['sex', 'age', 'weight', 'hour', 'bpm'])
 
-    return message.update(gender_encoded)
+# Codificar imágenes como datos base64 y escalarlas
+with open("sonriente.png", "rb") as f:
+    sonriente_data = base64.b64encode(f.read()).decode("utf-8")
+    sonriente_img = Image.open(f)
+    sonriente_width, sonriente_height = sonriente_img.size
+    sonriente_scaled_width = int(sonriente_width * 0.5)
+    sonriente_scaled_height = int(sonriente_height * 0.5)
+    sonriente_scaled_img = sonriente_img.resize((sonriente_scaled_width, sonriente_scaled_height))
 
-def work_type_encoding(message):
-    work_type_encoded = {'work_type_Never_worked': 0, 'work_type_Private': 0,
-                         'work_type_Self-employed': 0, 'work_type_children': 0}
+with open("triste.jpg", "rb") as f:
+    triste_data = base64.b64encode(f.read()).decode("utf-8")
+    triste_img = Image.open(f)
+    triste_width, triste_height = triste_img.size
+    triste_scaled_width = int(triste_width * 0.5)
+    triste_scaled_height = int(triste_height * 0.5)
+    triste_scaled_img = triste_img.resize((triste_scaled_width, triste_scaled_height))
 
-    if message['work_type'].lower() == 'never worked':
-        work_type_encoded['work_type_Never_worked'] = 1
-    elif message['work_type'].lower() == 'private':
-        work_type_encoded['work_type_Private'] = 1
-    elif message['work_type'].lower() == 'self-employed':
-        work_type_encoded['work_type_Self-employed'] = 1
-    elif message['work_type'].lower() == 'children':
-        work_type_encoded['work_type_children'] = 1
-
-    del message['work_type']
-
-    return message.update(work_type_encoded)
-
-def residence_encoding(message):
-    residence_encoded = {'Residence_type_Urban': 0}
-    if message['residence_type'] == 'urban':
-        residence_encoded['Residence_type_Urban'] = 1
-
-    del message['residence_type']
-
-    return message.update(residence_encoded)
-
-def smoking_encoding(message):
-    smoking_encoded = {'smoking_status_formerly smoked': 0, 'smoking_status_never smoked': 0,
-                       'smoking_status_smokes': 0}
-    if message['smoking_status'] == 'formerly smoked':
-        smoking_encoded['smoking_status_formerly smoked'] = 1
-    elif message['smoking_status'] == 'never smoked':
-        smoking_encoded['smoking_status_never smoked'] = 1
-    elif message['smoking_status'] == 'smokes':
-        smoking_encoded['smoking_status_smokes'] = 1
-
-    del message['smoking_status']
-
-    return message.update(smoking_encoded)
-
-def data_prep(message):
-    gender_encoding(message)
-    work_type_encoding(message)
-    residence_encoding(message)
-    smoking_encoding(message)
-
-    return pd.DataFrame(message, index=[0])
-
-
-def heart_prediction(message: dict):
-    # Data Prep
-    data = data_prep(message)
-    label = model.predict(data)[0]
-
-    return {'label': int(label)}
-
-@app.get('/')
+# Ruta principal
+@app.get('/', response_class=HTMLResponse)
 def main():
-    return {'message': 'Hola'}
+    form = """
+    <html>
+    <head>
+    <title>API de Salud</title>
+    </head>
+    <body style="font-family: Arial, sans-serif; padding: 20px;">
+    <h1 style="color: #0066cc;">API de Salud</h1>
+    <p>Por favor, ingresa tus datos para determinar tu estado de salud:</p>
+    <form action="/predict-state/" method="post">
+        <label for="sex">Sexo (male, female):</label><br>
+        <input type="text" id="sex" name="sex"><br>
+        <label for="age">Edad:</label><br>
+        <input type="number" id="age" name="age"><br>
+        <label for="weight">Peso:</label><br>
+        <input type="number" id="weight" name="weight"><br>
+        <label for="hour">Hora del día (0-23):</label><br>
+        <input type="number" id="hour" name="hour"><br>
+        <label for="bpm">Pulsaciones por minuto:</label><br>
+        <input type="number" id="bpm" name="bpm"><br><br>
+        <input type="submit" value="Predecir estado de salud">
+    </form>
+    </body>
+    </html>
+    """
+    return form
 
-@app.post('/heart-attack-prediction/')
-def predict_heart_attack(message: dict):
-    model_pred = heart_prediction(message)
-    return {'prediction': model_pred}
+# Ruta para predecir el estado de salud
+@app.post('/predict-state/', response_class=HTMLResponse)
+async def predict_state(sex: str = Form(..., description="Sexo (male, female)"),
+                        age: int = Form(..., description="Edad"),
+                        weight: float = Form(..., description="Peso"),
+                        hour: int = Form(..., description="Hora del día (0-23)"),
+                        bpm: int = Form(..., description="Pulsaciones por minuto")):
+
+    try:
+        # Validar los datos de entrada
+        if sex.lower() not in ['male', 'female']:
+            raise ValueError("Sexo debe ser 'male' o 'female'")
+
+        if not (0 <= hour <= 23):
+            raise ValueError("La hora debe estar entre 0 y 23")
+
+        # Preparar los datos
+        data = data_prep(sex, age, weight, hour, bpm)
+
+        # Hacer la predicción
+        prediction = model.predict(data)[0]
+
+        # Determinar el estado de salud
+        health_state = "bien" if prediction == 1 else "mal"
+
+        # Formatear el mensaje de estado de salud en HTML con imágenes incrustadas y escaladas
+        if health_state == "bien":
+            message = "<h2>Tu estado de salud es bueno</h2>"
+            sonriente_scaled_data_bytes = io.BytesIO()
+            sonriente_scaled_img.save(sonriente_scaled_data_bytes, format='PNG')
+            sonriente_scaled_data_bytes = sonriente_scaled_data_bytes.getvalue()
+            sonriente_scaled_data_encoded = base64.b64encode(sonriente_scaled_data_bytes).decode("utf-8")
+            image = f'<img src="data:image/png;base64,{sonriente_scaled_data_encoded}" alt="Imagen de sonrisa" width="{sonriente_scaled_width}px">'
+        else:
+            message = "<h2>Tu estado de salud es malo</h2>"
+            triste_scaled_data_bytes = io.BytesIO()
+            triste_scaled_img.save(triste_scaled_data_bytes, format='JPEG')
+            triste_scaled_data_bytes = triste_scaled_data_bytes.getvalue()
+            triste_scaled_data_encoded = base64.b64encode(triste_scaled_data_bytes).decode("utf-8")
+            image = f'<img src="data:image/jpg;base64,{triste_scaled_data_encoded}" alt="Imagen de tristeza" width="{triste_scaled_width}px">'
+
+        # Combinar el mensaje y la imagen en una sola respuesta HTML
+        response_html = f"{message}{image}"
+
+        return response_html
+
+    except ValueError as ve:
+        error_message = f"<h2>Error:</h2><p>{ve}</p>"
+        return error_message
+
