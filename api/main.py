@@ -1,134 +1,92 @@
 """
-Datos de entrada del modelo:
-['age', 'hypertension', 'heart_disease', 'avg_glucose_level', 'bmi',
-       'gender_Male', 'gender_Other', 'ever_married_Yes',
-       'work_type_Never_worked', 'work_type_Private',
-       'work_type_Self-employed', 'work_type_children', 'Residence_type_Urban',
-       'smoking_status_formerly smoked', 'smoking_status_never smoked',
-       'smoking_status_smokes']
+Modelo predicción de precios ['muy bajo' < 'bajo' < 'medio' < 'alto' < 'muy alto'] 
+de pisos por características.
+Datos de entrada del modelo (características):
+['review_scores_rating', 'room_type', 'bedrooms', 'bathrooms' ]
 
 {
-    'age': int,
-    'hypertension': int (1/0),
-    'gender': str (male/female/other),
-    'ever_married_Yes': int (1/0),
-    'heart_disease': int (1/0),
-    'avg_glucose_level': int,
-    'bmi': int,
-    'work_type': str (never worked/private/self-employed/children)
-    'residence_type': str (urban)
-    'smoking_status': str (formerly smoked/never smoked/smokes)
+'review_scores_rating': int (0-100), 
+'room_type': str (Entire home/apt, Private room, Shared room),
+'bedrooms' float, 
+'bathrooms': float,
 }
 
 {
-    "age": 33,
-    "hypertension": 1,
-    "gender": "male",
-    "ever_married_Yes": 1,
-    "heart_disease": 0,
-    "avg_glucose_level": 70,
-    "bmi": 29,
-    "work_type": "private",
-    "residence_type": "urban",
-    "smoking_status": "never smoked"
+'review_scores_rating': 80, 
+'room_type': str Shared room,
+'bedrooms' 2.0, 
+'bathrooms': 1.0,
 }
 
 {
-    "age": 75,
-    "hypertension": 1,
-    "gender": "male",
-    "ever_married_Yes": 1,
-    "heart_disease": 1,
-    "avg_glucose_level": 120,
-    "bmi": 29,
-    "work_type": "private",
-    "residence_type": "urban",
-    "smoking_status": "never smoked"
+'review_scores_rating': 70, 
+'room_type': str Private room,
+'bedrooms' 3.0, 
+'bathrooms': 2.0,
+}
+
+{
+'review_scores_rating': 50, 
+'room_type': str Private room,
+'bedrooms' 6.0, 
+'bathrooms': 4.0,
 }
 
 """
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Depends, Security
+from pydantic import BaseModel
 import joblib
 import pandas as pd
+import logging
 
-model = joblib.load('model.sav')
+#Configuración de logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
+#Modelo de datos de entrada con Pydantic
+class InputData(BaseModel):
+    review_scores_rating: int
+    room_type: str
+    bedrooms: float
+    bathrooms: float
+
+model = joblib.load('random_forest_model.sav')
 app = FastAPI()
 
-def gender_encoding(message):
-    gender_encoded = {'gender_Male': 0, 'gender_Other': 0}
-    if message['gender'].lower() == 'male':
-        gender_encoded['gender_Male'] = 1
-    elif message['gender'].lower() == 'other':
-        gender_encoded['gender_Other'] = 1
+#Función para ETL + Predicción
+def predict_price(data: InputData):
+    df = pd.DataFrame(data.dict(), index=[0])
+    
+    #Aplicamos one-hot encoding a la columna 'room_type' como en el entrenamiento
+    df = pd.get_dummies(df, columns=['room_type'])
+    room_type_columns = ['room_type_Entire home/apt', 'room_type_Private room', 'room_type_Shared room']
+    for col in room_type_columns:
+        if col not in df.columns:
+            df[col] = 0
 
-    del message['gender']
+    columns = ['review_scores_rating', 'bedrooms', 'bathrooms'] + room_type_columns
+    X = df[columns]
+    prediction = model.predict(X)
+    return prediction[0]
 
-    return message.update(gender_encoded)
+#Función autentificación por token 'MI_TOKEN' + Error 401
+def authenticate(auth: str):
+    if auth != 'MI_TOKEN':
+        raise HTTPException(status_code=401, detail='Token de autenticación no válido')
+    return True
 
-def work_type_encoding(message):
-    work_type_encoded = {'work_type_Never_worked': 0, 'work_type_Private': 0,
-                         'work_type_Self-employed': 0, 'work_type_children': 0}
+#Función validar datos + Predicción + Error 400/500
+@app.post('/predict/')
+def predict(data: InputData, auth: bool = Security(authenticate, scopes=['predict'])):
+    try:
+        #Validamos los datos de entrada o devolvemos error
+        if data.room_type not in ['Entire home/apt', 'Private room', 'Shared room']:
+            raise HTTPException(status_code=400, detail="Invalid room_type")
+        prediction = predict_price(data)
+        return {'Prediction': prediction}
+    
+    #Error de predicción 500
+    except Exception as e:
+        logger.error(f'Error durante la predicción: {e}')
+        raise HTTPException(status_code=500, detail='Error durante la predicción')
 
-    if message['work_type'].lower() == 'never worked':
-        work_type_encoded['work_type_Never_worked'] = 1
-    elif message['work_type'].lower() == 'private':
-        work_type_encoded['work_type_Private'] = 1
-    elif message['work_type'].lower() == 'self-employed':
-        work_type_encoded['work_type_Self-employed'] = 1
-    elif message['work_type'].lower() == 'children':
-        work_type_encoded['work_type_children'] = 1
-
-    del message['work_type']
-
-    return message.update(work_type_encoded)
-
-def residence_encoding(message):
-    residence_encoded = {'Residence_type_Urban': 0}
-    if message['residence_type'] == 'urban':
-        residence_encoded['Residence_type_Urban'] = 1
-
-    del message['residence_type']
-
-    return message.update(residence_encoded)
-
-def smoking_encoding(message):
-    smoking_encoded = {'smoking_status_formerly smoked': 0, 'smoking_status_never smoked': 0,
-                       'smoking_status_smokes': 0}
-    if message['smoking_status'] == 'formerly smoked':
-        smoking_encoded['smoking_status_formerly smoked'] = 1
-    elif message['smoking_status'] == 'never smoked':
-        smoking_encoded['smoking_status_never smoked'] = 1
-    elif message['smoking_status'] == 'smokes':
-        smoking_encoded['smoking_status_smokes'] = 1
-
-    del message['smoking_status']
-
-    return message.update(smoking_encoded)
-
-def data_prep(message):
-    gender_encoding(message)
-    work_type_encoding(message)
-    residence_encoding(message)
-    smoking_encoding(message)
-
-    return pd.DataFrame(message, index=[0])
-
-
-def heart_prediction(message: dict):
-    # Data Prep
-    data = data_prep(message)
-    label = model.predict(data)[0]
-    return {'label': int(label)}
-
-
-
-@app.get('/')
-def main():
-    return {'message': 'Hola'}
-
-@app.post('/heart-attack-prediction/')
-def predict_heart_attack(message: dict):
-    model_pred = heart_prediction(message)
-    # return {'prediction': model_pred}
-    return model_pred
