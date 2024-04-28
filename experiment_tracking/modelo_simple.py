@@ -14,7 +14,7 @@ warnings.filterwarnings('ignore')
 warnings.simplefilter('ignore')
 
 
-df = pd.read_csv('dataset.csv', sep=',')
+df = pd.read_csv('healthcare-dataset-stroke-data.csv', sep=',')
 print("##### Data Preprocessing #####\n")
 print(f'Numero de datos que tenemos: {len(df)}\n')
 
