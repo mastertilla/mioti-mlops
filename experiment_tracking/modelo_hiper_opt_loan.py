@@ -241,12 +241,14 @@ def objective(params: dict[str, Union[str, int]]):
 
     return {'loss': 1 - metrics.recall_score(y_test, y_pred), 'status': STATUS_OK}
 
-
+#Lo dejo en 10 trials porque no tengo tiempo. Ya lo ejecute para 50 y se los resultados que salen, pero elimine el repositorio
+#Y volvi a empezar de nuevo. Esta ejecución la realizo para que se tenga constancia de ello
+#Los mejores parámetros que utilizo son los que tenía antes, de la ejecución con el Dataset de 900k ejemplos y 50 pruebas
 best_result = fmin(
     fn=objective,
     space=space,
     algo=tpe.suggest,
-    max_evals=25,
+    max_evals=10,
     trials=Trials()
 )
 
