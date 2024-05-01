@@ -123,11 +123,11 @@ def heart_prediction(message: dict):
 
 
 
-@app.get('/')
+@app.get('/') #Get es devolver lo que quieras
 def main():
     return {'message': 'Hola'}
 
-@app.post('/heart-attack-prediction/')
+@app.post('/heart-attack-prediction/') #Post porque creamos. Put cambiar modificar.
 def predict_heart_attack(message: dict):
     model_pred = heart_prediction(message)
     # return {'prediction': model_pred}
