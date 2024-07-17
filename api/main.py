@@ -48,12 +48,49 @@ Datos de entrada del modelo:
 
 """
 from fastapi import FastAPI
+from fastapi import HTTPException, Query
 import joblib
 import pandas as pd
+from pydantic import BaseModel
 
 model = joblib.load('model.sav')
 
 app = FastAPI()
+
+# Definir la API key válida
+VALID_API_KEY = '1234abcd'
+
+class HeartAttackPredictionInput(BaseModel):
+    age: int
+    hypertension: int
+    gender: str
+    ever_married_Yes: int
+    heart_disease: int
+    avg_glucose_level: float
+    bmi: float
+    work_type: str
+    residence_type: str
+    smoking_status: str
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                "age": 33,
+                "hypertension": 1,
+                "gender": "male",
+                "ever_married_Yes": 1,
+                "heart_disease": 0,
+                "avg_glucose_level": 70.0,
+                "bmi": 29.0,
+                "work_type": "private",
+                "residence_type": "urban",
+                "smoking_status": "never smoked"
+            }
+            ]
+        }
+    }
+
 
 def gender_encoding(message):
     gender_encoded = {'gender_Male': 0, 'gender_Other': 0}
@@ -128,7 +165,29 @@ def main():
     return {'message': 'Hola'}
 
 @app.post('/heart-attack-prediction/')
-def predict_heart_attack(message: dict):
-    model_pred = heart_prediction(message)
+def predict_heart_attack(api_key: str = Query(..., description="API Key")):
+    # Verificar la API key
+    if api_key != VALID_API_KEY:
+        raise HTTPException(status_code=401, detail="API key incorrecta")
+
+    # Si la API key es válida, proceder con la predicción
+    try:
+        message = HeartAttackPredictionInput(**message.dict())
+        message_dict = message.model_dump()
+        model_pred = heart_prediction(message_dict)
+        return model_pred
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+
+
+"""
+@app.post('/heart-attack-prediction/')
+def predict_heart_attack(message: HeartAttackPredictionInput):
+    message_dict = message.model_dump()
+    model_pred = heart_prediction(message_dict)
     # return {'prediction': model_pred}
     return model_pred
+    
+"""
