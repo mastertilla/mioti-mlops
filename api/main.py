@@ -50,10 +50,57 @@ Datos de entrada del modelo:
 from fastapi import FastAPI
 import joblib
 import pandas as pd
+from fastapi.security import OAuth2PasswordBearer
 
 model = joblib.load('model.sav')
 
 app = FastAPI()
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+def validate_form(message):
+    errors = []
+
+    # Validar age
+    if not isinstance(message.get('age'), int):
+        errors.append("El campo 'age' debe ser un número entero.")
+    # Validar hypertension
+    if message.get('hypertension') not in [0, 1]:
+        errors.append("El campo 'hypertension' debe ser 0 o 1.")
+    # Validar gender
+    if message.get('gender') not in ['male', 'female', 'other']:
+        errors.append("El campo 'gender' debe ser 'male', 'female' o 'other'.")
+    # Validar ever_married_Yes
+    if message.get('ever_married_Yes') not in [0, 1]:
+        errors.append("El campo 'ever_married_Yes' debe ser 0 o 1.")
+    # Validar heart_disease
+    if message.get('heart_disease') not in [0, 1]:
+        errors.append("El campo 'heart_disease' debe ser 0 o 1.")
+    # Validar avg_glucose_level
+    if not isinstance(message.get('avg_glucose_level'), int):
+        errors.append("El campo 'avg_glucose_level' debe ser un número entero.")
+    # Validar bmi
+    if not isinstance(message.get('bmi'), int):
+        errors.append("El campo 'bmi' debe ser un número entero.")
+    # Validar work_type
+    if message.get('work_type') not in ['never worked', 'private', 'self-employed', 'children']:
+        errors.append("El campo 'work_type' debe ser 'never worked', 'private', 'self-employed' o 'children'.")
+    # Validar residence_type
+    if message.get('residence_type') != 'urban':
+        errors.append("El campo 'residence_type' debe ser 'urban'.")
+    # Validar smoking_status
+    if message.get('smoking_status') not in ['formerly smoked', 'never smoked', 'smokes']:
+        errors.append("El campo 'smoking_status' debe ser 'formerly smoked', 'never smoked' o 'smokes'.")
+
+    return errors
+
+validation_errors = validate_form(message)
+if validation_errors:
+    print("Errores de validación encontrados:")
+    for error in validation_errors:
+        print(error)
+else:
+    print("Todos los datos son válidos.")
+
 
 def gender_encoding(message):
     gender_encoded = {'gender_Male': 0, 'gender_Other': 0}
@@ -122,6 +169,10 @@ def heart_prediction(message: dict):
     return {'label': int(label)}
 
 
+
+@app.get("/items/")
+async def read_items(token: Annotated[str, Depends(oauth2_scheme)]):
+    return {"token": token}
 
 @app.get('/')
 def main():
