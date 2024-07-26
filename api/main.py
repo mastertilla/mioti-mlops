@@ -47,12 +47,39 @@ Datos de entrada del modelo:
 }
 
 """
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from pydantic import BaseModel
 import joblib
+import secrets
 import pandas as pd
 
-model = joblib.load('model.sav')
+security = HTTPBasic()
 
+class HeartData(BaseModel):
+    age: int
+    hypertension: int
+    gender: str
+    ever_married_Yes: int
+    heart_disease: int
+    avg_glucose_level: float
+    bmi: float
+    work_type: str
+    residence_type: str
+    smoking_status: str
+
+def get_current_user(credentials: HTTPBasicCredentials = Depends(security)):
+    correct_username = secrets.compare_digest(credentials.username, "apicorazon")
+    correct_password = secrets.compare_digest(credentials.password, "ASFSDFSDHJ73332224SSGH")
+    if not (correct_username and correct_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect API Key",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
+
+model = joblib.load('model.sav')
 app = FastAPI()
 
 def gender_encoding(message):
@@ -116,19 +143,16 @@ def data_prep(message):
 
 
 def heart_prediction(message: dict):
-    # Data Prep
     data = data_prep(message)
     label = model.predict(data)[0]
     return {'label': int(label)}
-
-
 
 @app.get('/')
 def main():
     return {'message': 'Hola'}
 
 @app.post('/heart-attack-prediction/')
-def predict_heart_attack(message: dict):
+def predict_heart_attack(message: HeartData, username: str = Depends(get_current_user)):
+    message = message.dict()  # Convert to dict from pydantic model
     model_pred = heart_prediction(message)
-    # return {'prediction': model_pred}
     return model_pred
