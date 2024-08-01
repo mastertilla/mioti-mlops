@@ -47,14 +47,39 @@ Datos de entrada del modelo:
 }
 
 """
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Query, Depends
+from pydantic import BaseModel, conint, confloat
 import joblib
 import pandas as pd
+from typing import Literal
 
+# Cargar el modelo previamente entrenado
 model = joblib.load('model.sav')
 
 app = FastAPI()
 
+# Definición del DataModel utilizando Pydantic
+class PatientData(BaseModel):
+    age: conint(ge=0)  # Edad debe ser un número entero positivo
+    hypertension: conint(ge=0, le=1)  # 0 o 1
+    heart_disease: conint(ge=0, le=1)  # 0 o 1
+    avg_glucose_level: confloat(ge=0)  # Nivel de glucosa promedio debe ser un número positivo
+    bmi: confloat(ge=0)  # BMI debe ser un número positivo
+    gender: Literal['male', 'female', 'other']  # Valores permitidos
+    ever_married_Yes: conint(ge=0, le=1)  # 0 o 1
+    work_type: Literal['never worked', 'private', 'self-employed', 'children']  # Valores permitidos
+    residence_type: Literal['urban', 'rural']  # Valores permitidos
+    smoking_status: Literal['formerly smoked', 'never smoked', 'smokes']  # Valores permitidos
+
+# Definición de la clave API
+API_KEY = "Contrasena"
+
+def api_key_dependency(api_key: str = Query(..., alias="api_key")):
+    if api_key != API_KEY:
+        raise HTTPException(status_code=403, detail="Invalid API Key")
+    return api_key
+
+# Funciones de encoding
 def gender_encoding(message):
     gender_encoded = {'gender_Male': 0, 'gender_Other': 0}
     if message['gender'].lower() == 'male':
@@ -63,8 +88,7 @@ def gender_encoding(message):
         gender_encoded['gender_Other'] = 1
 
     del message['gender']
-
-    return message.update(gender_encoded)
+    message.update(gender_encoded)
 
 def work_type_encoding(message):
     work_type_encoded = {'work_type_Never_worked': 0, 'work_type_Private': 0,
@@ -80,8 +104,7 @@ def work_type_encoding(message):
         work_type_encoded['work_type_children'] = 1
 
     del message['work_type']
-
-    return message.update(work_type_encoded)
+    message.update(work_type_encoded)
 
 def residence_encoding(message):
     residence_encoded = {'Residence_type_Urban': 0}
@@ -89,8 +112,7 @@ def residence_encoding(message):
         residence_encoded['Residence_type_Urban'] = 1
 
     del message['residence_type']
-
-    return message.update(residence_encoded)
+    message.update(residence_encoded)
 
 def smoking_encoding(message):
     smoking_encoded = {'smoking_status_formerly smoked': 0, 'smoking_status_never smoked': 0,
@@ -103,32 +125,29 @@ def smoking_encoding(message):
         smoking_encoded['smoking_status_smokes'] = 1
 
     del message['smoking_status']
-
-    return message.update(smoking_encoded)
+    message.update(smoking_encoded)
 
 def data_prep(message):
     gender_encoding(message)
     work_type_encoding(message)
     residence_encoding(message)
     smoking_encoding(message)
+    return pd.DataFrame([message])
 
-    return pd.DataFrame(message, index=[0])
-
-
-def heart_prediction(message: dict):
-    # Data Prep
-    data = data_prep(message)
+def heart_prediction(message: PatientData):
+    # Convertir el objeto de entrada a diccionario
+    data_dict = message.dict()
+    # Preparar los datos
+    data = data_prep(data_dict)
+    # Realizar la predicción
     label = model.predict(data)[0]
     return {'label': int(label)}
-
-
 
 @app.get('/')
 def main():
     return {'message': 'Hola'}
 
 @app.post('/heart-attack-prediction/')
-def predict_heart_attack(message: dict):
+def predict_heart_attack(message: PatientData, api_key: str = Depends(api_key_dependency)):
     model_pred = heart_prediction(message)
-    # return {'prediction': model_pred}
-    return model_pred
+    return {'prediction': model_pred}
